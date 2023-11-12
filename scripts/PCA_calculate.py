@@ -2,15 +2,18 @@ import argparse, os, sys, glob, datetime, yaml
 import torch
 import time
 import numpy as np
-from tqdm import trange
+from tqdm import trange,tqdm
 
 from omegaconf import OmegaConf
 from PIL import Image
 
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.util import instantiate_from_config
+from scipy.spatial import procrustes
+from sklearn.decomposition import PCA
 
 rescale = lambda x: (x + 1.) / 2.
+
 
 def custom_to_pil(x):
     x = x.detach().cpu()
@@ -54,8 +57,6 @@ def logs2pil(logs, keys=["sample"]):
 def convsample(model, shape, return_intermediates=True,
                verbose=True,
                make_prog_row=False):
-
-
     if not make_prog_row:
         return model.p_sample_loop(None, shape,
                                    return_intermediates=return_intermediates, verbose=verbose)
@@ -73,14 +74,120 @@ def convsample_ddim(model, steps, shape, eta=1.0
     shape = shape[1:]
 
     # Sample is the latent output for ddim, do pca here
-    samples, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False,)
+    samples, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False, )
     return samples, intermediates
+
+@torch.no_grad()
+def pca_ddim(model, steps, batch_size, pca_samples, eta=1.0):
+    pca = PCA()
+    ddim = DDIMSampler(model)
+    bs = batch_size
+    shape = [model.model.diffusion_model.in_channels,model.model.diffusion_model.image_size,model.model.diffusion_model.image_size]
+    latent_out_r = torch.empty([0,model.model.diffusion_model.image_size**2]).to(model.device)
+    latent_out_g = torch.empty([0,model.model.diffusion_model.image_size**2]).to(model.device)
+    latent_out_b = torch.empty([0,model.model.diffusion_model.image_size**2]).to(model.device)
+    # Sample is the latent output for ddim, do pca here
+    for _ in tqdm(range(pca_samples // batch_size)):
+        latent, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False, )
+        latent_out_r = torch.cat((latent_out_r,latent[:,0,:,:].reshape(bs,model.model.diffusion_model.image_size**2)),0)
+        latent_out_g = torch.cat((latent_out_g,latent[:,1,:,:].reshape(bs,model.model.diffusion_model.image_size**2)),0)
+        latent_out_b = torch.cat((latent_out_b,latent[:,2,:,:].reshape(bs,model.model.diffusion_model.image_size**2)),0)
+
+
+    latent_out_r = latent_out_r.detach().cpu().numpy()
+    latent_out_g = latent_out_g.detach().cpu().numpy()
+    latent_out_b = latent_out_b.detach().cpu().numpy()
+    pca.fit(latent_out_r)  # do pca for the style vector data distribution
+    var_r = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+    pc_r = pca.components_  # get the pc ranked from high var to low var
+    mean_r = latent_out_r.mean(0)
+
+    pca.fit(latent_out_g)  # do pca for the style vector data distribution
+    var_g = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+    pc_g = pca.components_  # get the pc ranked from high var to low var
+    mean_g = latent_out_g.mean(0)
+
+    pca.fit(latent_out_b)  # do pca for the style vector data distribution
+    var_b = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+    pc_b = pca.components_  # get the pc ranked from high var to low var
+    mean_b = latent_out_b.mean(0)
+
+    pca = {'var_r':var_r,'pc_r':pc_r,'mean_r':mean_r,'var_g':var_g,'pc_g':pc_g,'mean_g':mean_g,'var_b':var_b,'pc_b':pc_b,'mean_b':mean_b}
+    np.save("./pca.npy", pca)
+    return pca
+
+@torch.no_grad()
+def pca_ddim_no_rgb(model, steps, batch_size, pca_samples, eta=1.0):
+    pca = PCA()
+    ddim = DDIMSampler(model)
+    bs = batch_size
+    shape = [model.model.diffusion_model.in_channels,model.model.diffusion_model.image_size,model.model.diffusion_model.image_size]
+    latent_out = torch.empty([0,3*model.model.diffusion_model.image_size**2]).to(model.device)
+    # Sample is the latent output for ddim, do pca here
+    for _ in tqdm(range(pca_samples // batch_size)):
+        latent, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False, )
+        latent_out = torch.cat((latent_out,latent.reshape(bs,-1)),0)
+
+    latent_out = latent_out.detach().cpu().numpy()
+    pca.fit(latent_out)  # do pca for the style vector data distribution
+    var = pca.explained_variance_  # get variance along each pc axis ranked from high to low
+    pc = pca.components_  # get the pc ranked from high var to low var
+    mean = latent_out.mean(0)
+
+    pca = {'var':var,'pc':pc,'mean':mean}
+    np.save("./pca_1D.npy", pca)
+    return pca
+
+def procrustes_rotation(X1, X2):
+    mtx1, mtx2, disparity = procrustes(X1, X2)
+    return mtx2
+
+def pca_ddim_no_rgb_boostrapping(model, steps, batch_size, pca_samples, eta=1.0):
+    # Perform initial PCA on full dataset
+    pca = PCA()
+    ddim = DDIMSampler(model)
+    bs = batch_size
+    shape = [model.model.diffusion_model.in_channels,model.model.diffusion_model.image_size,model.model.diffusion_model.image_size]
+    latent_out = torch.empty([0,3*model.model.diffusion_model.image_size**2]).to(model.device)
+    # Sample is the latent output for ddim, do pca here
+    for _ in tqdm(range(pca_samples // batch_size)):
+        latent, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False, )
+        latent_out = torch.cat((latent_out,latent.reshape(bs,-1)),0)
+
+    latent_out = latent_out.detach().cpu().numpy()
+    pca.fit(latent_out)  # do pca for the style vector data distribution
+
+    # Align principal components using Procrustes rotation
+    for i in range(10):
+        for _ in tqdm(range(pca_samples // batch_size)):
+            latent, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False, )
+            latent_out = torch.cat((latent_out, latent.reshape(bs, -1)), 0)
+
+        latent_out = latent_out.detach().cpu().numpy()
+        pca_sample = PCA()
+        pca_sample.fit(latent_out)  # do pca for the style vector data distribution
+
+
+        # Align principal components using Procrustes rotation
+        mtx = procrustes_rotation(pca.components_, pca_sample.components_)
+        pca.components_ = mtx
+
+        # Store bootstrapped principal components
+        if i == 0:
+            boot_pca = pca.components_
+        else:
+            boot_pca = np.dstack((boot_pca, pca.components_))
+
+    # Compute mean and standard deviation of bootstrapped principal components
+    mean_pca = np.mean(boot_pca, axis=2)
+    std_pca = np.std(boot_pca, axis=2)
+
+    print(np.mean(std_pca))
+
 
 
 @torch.no_grad()
-def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=None, eta=1.0,):
-
-
+def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=None, eta=1.0, ):
     log = dict()
 
     shape = [batch_size,
@@ -94,7 +201,7 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
             sample, progrow = convsample(model, shape,
                                          make_prog_row=True)
         else:
-            sample, intermediates = convsample_ddim(model,  steps=custom_steps, shape=shape,
+            sample, intermediates = convsample_ddim(model, steps=custom_steps, shape=shape,
                                                     eta=eta)
 
         t1 = time.time()
@@ -108,15 +215,15 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     print(f'Throughput for this batch: {log["throughput"]}')
     return log
 
+
 def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None, n_samples=50000, nplog=None):
     if vanilla:
         print(f'Using Vanilla DDPM sampling with {model.num_timesteps} sampling steps.')
     else:
         print(f'Using DDIM sampling with {custom_steps} sampling steps and eta={eta}')
 
-
     tstart = time.time()
-    n_saved = len(glob.glob(os.path.join(logdir,'*.png')))-1
+    n_saved = len(glob.glob(os.path.join(logdir, '*.png'))) - 1
     # path = logdir
     if model.cond_stage_model is None:
         all_images = []
@@ -138,7 +245,7 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
         np.savez(nppath, all_img)
 
     else:
-       raise NotImplementedError('Currently only sampling for unconditional models supported.')
+        raise NotImplementedError('Currently only sampling for unconditional models supported.')
 
     print(f"sampling of {n_saved} images finished in {(time.time() - tstart) / 60.:.2f} minutes.")
 
@@ -162,7 +269,7 @@ def save_logs(logs, path, n_saved=0, key="sample", np_path=None):
     return n_saved
 
 
-def  get_parser():
+def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-r",
@@ -217,12 +324,20 @@ def  get_parser():
         help="the bs",
         default=10
     )
+
+    parser.add_argument(
+        "--pca_samples",
+        type=int,
+        nargs="?",
+        help="data samples for pca",
+        default=50000
+    )
     return parser
 
 
 def load_model_from_config(config, sd):
     model = instantiate_from_config(config)
-    model.load_state_dict(sd,strict=False)
+    model.load_state_dict(sd, strict=False)
     model.cuda()
     model.eval()
     return model
@@ -243,7 +358,7 @@ def load_model(config, ckpt, gpu, eval_mode):
 
 
 if __name__ == "__main__":
-    now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") # get time
+    now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")  # get time
     sys.path.append(os.getcwd())
     command = " ".join(sys.argv)
 
@@ -293,30 +408,8 @@ if __name__ == "__main__":
 
     # get model and steps trained
     model, global_step = load_model(config, ckpt, gpu, eval_mode)
-    print(f"global step: {global_step}")
-    print(75 * "=")
-    # making saving dir
-    print("logging to:")
-    logdir = os.path.join(logdir, "samples", f"{global_step:08}", now)
-    imglogdir = os.path.join(logdir, "img")
-    numpylogdir = os.path.join(logdir, "numpy")
 
-    os.makedirs(imglogdir)
-    os.makedirs(numpylogdir)
-    print(logdir)
-    print(75 * "=")
-
-    # write config out
-    sampling_file = os.path.join(logdir, "sampling_config.yaml")
-    sampling_conf = vars(opt)
-
-    with open(sampling_file, 'w') as f:
-        yaml.dump(sampling_conf, f, default_flow_style=False)
-    print(sampling_conf)
-
-    # run the model based on parser
-    run(model, imglogdir, eta=opt.eta,
-        vanilla=opt.vanilla_sample,  n_samples=opt.n_samples, custom_steps=opt.custom_steps,
-        batch_size=opt.batch_size, nplog=numpylogdir)
+    #pca_ddim_no_rgb(model, opt.custom_steps, opt.batch_size, opt.pca_samples)
+    pca_ddim_no_rgb_boostrapping(model,opt.custom_steps, opt.batch_size, opt.pca_samples)
 
     print("done.")

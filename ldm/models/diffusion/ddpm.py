@@ -764,6 +764,8 @@ class LatentDiffusion(DDPM):
 
     # same as above but without decorator
     def differentiable_decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
+        # torch.manual_seed(2022)
+        # np.random.seed(2002)
         if predict_cids:
             if z.dim() == 4:
                 z = torch.argmax(z.exp(), dim=1).long()
