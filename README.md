@@ -53,8 +53,9 @@ After running the code, fingerprinted images will be saved under result folder.
 
 
 ## Note:
--PCA needs to be precomputed by 'PCA_calculate.py'.\
+-PCA needs to be precomputed by 'PCA_calculate.py'. Or download from [here](https://drive.google.com/file/d/1iWfIX7zRl4bwzif_SRqPOlFsp8b4jm_D/view?usp=sharing)\
 -1D_watermarking.py use single RGB channel as latent, while 3D_watermarking.py use all RGB channel as latent and embed same key across all three channel.
+-StyleGAN2 version can be found [here](https://github.com/GuangyuNie/Attributing-Image-Generative-Models-using-Latent-Fingerprints/tree/refactor)
 
 ## Acknowledgement:
 -This repo implement an intrinsic watermarking module based on pretrained LDM model. For more information regarding the LDM itself, check their official github repo [here](https://github.com/CompVis/latent-diffusion)
