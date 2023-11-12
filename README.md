@@ -38,16 +38,17 @@ The first stage models can then be found in `models/first_stage_models/<model_sp
 
 - Run, e.g.,
   ```
-  python ./scripts/3D_watermarking.py --model sg2 --save_dir '../result/' --key_len 64 --sigma 1 --shift 448
+  python ./scripts/3D_watermarking.py --resume ../models/ldm/ffhq256/model.ckpt --logdir ../visualization --n_samples 1000 --sigma 1 --key_len 64 --lr 0.2 --steps 2000 --lhs 1
   ```
   where
-- `save_dir`: Directory for output saving
+- `resume`: pretrained checkpoint dir
+- `logdir`: Directory for output saving
 - `key_len`: Digits of binary key, higher key length will increase the key capacity. For key length = 64, the key capacity would be 2^64
 - `sigma` : Fingerprint perturbation strength
 - `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding variance. 
 - `step`: optimization steps to attribute fingerprinted image
-- `sample_size`: number of attribution tests user would like to perform
-- `n`: Number of initial guess from Latin Hypercube sampling method
+- `n_samples`: number of attribution tests user would like to perform
+- `lhs`: Number of initial guess from Latin Hypercube sampling method
 E.g. the set of editing direction V follows V = PC[shift:shift+key_len]  
 After running the code, fingerprinted images will be saved under result folder. 
 
