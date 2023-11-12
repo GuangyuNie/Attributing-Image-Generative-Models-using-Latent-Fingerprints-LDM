@@ -23,7 +23,7 @@ Checkpoints can be downloaded below.\
 Make checkpoint folder in src folder and put weights under src/checkpoint/.\
 Pretrained Weights:\
 [FFHQ](https://ommer-lab.com/files/latent-diffusion/ffhq.zip)\
-More info can be found on official [LDM](https://github.com/CompVis/latent-diffusion) repo
+More info can be found in official [LDM](https://github.com/CompVis/latent-diffusion) repo
 
 ### Get the models
 
@@ -58,4 +58,4 @@ After running the code, fingerprinted images will be saved under result folder.
 -StyleGAN2 version can be found [here](https://github.com/GuangyuNie/Attributing-Image-Generative-Models-using-Latent-Fingerprints/tree/refactor)
 
 ## Acknowledgement:
--This repo implement an intrinsic watermarking module based on pretrained LDM model. For more information regarding the LDM itself, check their official github repo [here](https://github.com/CompVis/latent-diffusion)
+This repo implement an intrinsic watermarking module based on pretrained LDM model. For more information regarding the LDM itself, check their official github repo [here](https://github.com/CompVis/latent-diffusion)
