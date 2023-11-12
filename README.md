@@ -50,7 +50,7 @@ The first stage models can then be found in `models/first_stage_models/<model_sp
 - `lhs`: Number of initial guess from Latin Hypercube sampling method
 - `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding variance. \
 E.g. the set of editing direction V follows V = PC[shift:shift+key_len]  
-After running the code, fingerprinted images will be saved under result folder. 
+After running the code, fingerprinted images will be saved under logdir folder specified in the arg. 
 
 
 ## Note:
