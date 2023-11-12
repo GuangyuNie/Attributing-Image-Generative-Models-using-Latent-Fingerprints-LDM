@@ -45,10 +45,10 @@ The first stage models can then be found in `models/first_stage_models/<model_sp
 - `logdir`: Directory for output saving
 - `key_len`: Digits of binary key, higher key length will increase the key capacity. For key length = 64, the key capacity would be 2^64
 - `sigma` : Fingerprint perturbation strength
-- `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding variance. 
 - `step`: optimization steps to attribute fingerprinted image
 - `n_samples`: number of attribution tests user would like to perform
 - `lhs`: Number of initial guess from Latin Hypercube sampling method
+- `shift` : Initial index of consecutive principal axis ranked from a descent order based on it's corresponding variance. \
 E.g. the set of editing direction V follows V = PC[shift:shift+key_len]  
 After running the code, fingerprinted images will be saved under result folder. 
 
